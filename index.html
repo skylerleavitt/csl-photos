@@ -29,8 +29,19 @@ textarea{min-height:70px}
 .pick.ghost{background:#fff;color:var(--acc);border:2px solid var(--acc)}
 .tips{color:var(--mut);font-size:14px;margin:8px 0 0}
 .bad{color:var(--bad)}
-.thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
-.thumbs div{aspect-ratio:1;background:#e9edf5 center/cover no-repeat;border-radius:6px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
+@media(min-width:520px){.grid{grid-template-columns:repeat(3,1fr)}}
+.tile{position:relative;aspect-ratio:4/3;border:2px dashed #b7c1d6;border-radius:12px;background:#f7f9fd center/cover no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px;text-align:center;color:var(--acc);cursor:pointer;overflow:hidden}
+.tile input{display:none}
+.tile b{font-size:14px;line-height:1.2}.tile small{font-size:12px;color:var(--mut);line-height:1.2}
+.tile .pl{font-size:26px;line-height:1;font-weight:300}
+.tile.full{border:2px solid var(--ok);justify-content:flex-end;align-items:flex-start;padding:0}
+.tile.full:before{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(6,16,32,.75),rgba(6,16,32,0) 55%)}
+.tile.full .lab{position:relative;color:#fff;font-size:13px;font-weight:600;padding:7px 9px;text-align:left}
+.tile .rt{position:absolute;top:6px;right:6px;background:rgba(6,16,32,.7);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px}
+.tile .rm{position:absolute;top:6px;left:6px;z-index:2;background:rgba(179,38,30,.92);color:#fff;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;border:0}
+.sub{margin:16px 0 0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);font-weight:600}
+.cnt{font-size:14px;color:var(--mut);margin:8px 0 0}
 button.go{width:100%;margin-top:16px;padding:15px;border:0;border-radius:10px;background:var(--ok);color:#fff;font:700 17px system-ui;cursor:pointer}
 button.go:disabled{opacity:.5}
 .bar{height:8px;background:#e1e6f0;border-radius:6px;overflow:hidden;margin-top:12px}.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .2s}
@@ -66,9 +77,14 @@ button.go:disabled{opacity:.5}
 </div>
 <div class="card">
 <h2>Photos</h2>
-<label class="pick" style="margin-top:8px">Take or choose photos<input type="file" id="files" accept="image/*" multiple></label>
-<p class="tips">Please include: front, back, both sides, all four corners, the dashboard with the odometer showing, interior seats, and any damage.</p>
-<div class="thumbs" id="thumbs"></div>
+<p class="tips" style="margin-top:0">Tap each box to take or choose that photo. Good photos help us give you a better offer.</p>
+<div class="grid" id="slots"></div>
+<p class="sub">Any damage?</p>
+<p class="tips" style="margin-top:2px">Dents, scratches, cracked glass, rust, stains or tears. Add as many photos as you need.</p>
+<div class="grid" id="dmgs"></div>
+<p class="sub">Anything else</p>
+<div class="grid" id="extras"></div>
+<p class="cnt" id="cnt"></p>
 <label>Anything we should know?</label><textarea id="notes" placeholder="Damage, warning lights, new tires, etc."></textarea>
 <button class="go" id="send" type="button">Send to CSL Ford Sales</button>
 <div class="bar" id="barwrap" style="display:none"><i id="bar"></i></div>
@@ -78,11 +94,29 @@ button.go:disabled{opacity:.5}
 <div class="foot">CSL Ford Sales &middot; Cardston, Alberta</div>
 <script>
 var EXEC='https://script.google.com/macros/s/AKfycby5lMgVjjxcvgoU7SHEVXafrWcfF3Zj0miX3rkUZbXeTk8u6fBoO1uhYq5yTeOPQdzt/exec';
-var picked=[];
+var SLOTS=[{k:'front',l:'Front',h:'Whole front of the vehicle'},{k:'left',l:'Driver side',h:'Whole side, stand back'},{k:'back',l:'Back',h:'Whole rear of the vehicle'},{k:'right',l:'Passenger side',h:'Whole side, stand back'},{k:'odo',l:'Odometer',h:'Dashboard with the km showing'},{k:'vin',l:'VIN sticker',h:'Inside the driver door'},{k:'int1',l:'Front seats',h:'Inside, from the door'},{k:'int2',l:'Back seats',h:'Inside, rear seat area'},{k:'tire',l:'Tires',h:'Close-up of a tire tread'}];
+var files={},dmg=[],extra=[];
 function $(i){return document.getElementById(i)}
 /* ---------- photos ---------- */
-$('files').addEventListener('change',function(e){for(var i=0;i<e.target.files.length;i++)picked.push(e.target.files[i]);e.target.value='';draw()});
-function draw(){var t=$('thumbs');t.innerHTML='';picked.forEach(function(f,i){var d=document.createElement('div');d.style.backgroundImage='url('+URL.createObjectURL(f)+')';d.title='Tap to remove';d.onclick=function(){picked.splice(i,1);draw()};t.appendChild(d)})}
+function mkTile(label,hint,file,onPick,onRemove){
+var d=document.createElement('label');d.className='tile'+(file?' full':'');
+if(file){d.style.backgroundImage='url('+URL.createObjectURL(file)+')';d.innerHTML='<span class="lab">'+label+'</span><span class="rt">Retake</span>'}
+else d.innerHTML='<span class="pl">+</span><b>'+label+'</b>'+(hint?'<small>'+hint+'</small>':'');
+var i=document.createElement('input');i.type='file';i.accept='image/*';
+i.addEventListener('change',function(){if(i.files&&i.files[0])onPick(i.files[0])});d.appendChild(i);
+if(file&&onRemove){var x=document.createElement('button');x.type='button';x.className='rm';x.textContent='Remove';x.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();onRemove()});d.appendChild(x)}
+return d}
+function draw(){
+var s=$('slots');s.innerHTML='';var n=0;
+SLOTS.forEach(function(o){var f=files[o.k];if(f)n++;s.appendChild(mkTile(o.l,o.h,f,function(F){files[o.k]=F;draw()},function(){delete files[o.k];draw()}))});
+var g=$('dmgs');g.innerHTML='';
+dmg.forEach(function(f,i){n++;g.appendChild(mkTile('Damage '+(i+1),'',f,function(F){dmg[i]=F;draw()},function(){dmg.splice(i,1);draw()}))});
+g.appendChild(mkTile('Add damage photo','Tap to add',null,function(F){dmg.push(F);draw()}));
+var e=$('extras');e.innerHTML='';
+extra.forEach(function(f,i){n++;e.appendChild(mkTile('Photo '+(i+1),'',f,function(F){extra[i]=F;draw()},function(){extra.splice(i,1);draw()}))});
+e.appendChild(mkTile('Add another photo','Tap to add',null,function(F){extra.push(F);draw()}));
+$('cnt').textContent=n+' photo'+(n==1?'':'s')+' added'+(n<6?'. The more we see, the better the offer.':'.')}
+draw();
 function shrink(file){return new Promise(function(res,rej){
 var img=new Image(),url=URL.createObjectURL(file);
 img.onload=function(){var s=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');
@@ -110,7 +144,7 @@ var sc={stream:null,timer:null,el:null,busy:false,seen:'',n:0};
 function loadZX(){if(window.ZXing)return Promise.resolve();return new Promise(function(res,rej){var q=document.createElement('script');q.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';q.onload=res;q.onerror=function(){rej(new Error('zx'))};document.head.appendChild(q)})}
 function closeScan(){if(sc.timer){clearInterval(sc.timer);sc.timer=null}if(sc.stream){sc.stream.getTracks().forEach(function(t){t.stop()});sc.stream=null}if(sc.el){sc.el.remove();sc.el=null}}
 function gotVin(v,frame){closeScan();$('vin').value=v;var m=$('vinmsg');m.className='tips';m.textContent='Got it: '+v+'. Please check it matches your sticker.';decodeVin(v);
-if(frame){frame.toBlob(function(b){if(b){var f=new File([b],'vin-scan.jpg',{type:'image/jpeg'});picked.unshift(f);draw()}},'image/jpeg',.9)}}
+if(frame){frame.toBlob(function(b){if(b){var f=new File([b],'vin-scan.jpg',{type:'image/jpeg'});files.vin=f;draw()}},'image/jpeg',.9)}}
 $('scanbtn').addEventListener('click',function(){
 var m=$('vinmsg');
 if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){m.className='tips bad';m.textContent='This browser cannot open the camera here. Type your VIN, or add a photo of the VIN sticker below.';return}
@@ -144,15 +178,16 @@ $('send').addEventListener('click',async function(){
 var info={name:$('name').value,phone:$('phone').value,email:$('email').value,vehicle:$('vehicle').value,vin:$('vin').value,km:$('km').value,notes:$('notes').value};
 var m=$('msg');m.className='msg';m.textContent='';
 if(!info.name.trim()||!info.phone.trim()){m.className='msg bad';m.textContent='Please enter your name and cell number.';return}
-if(!picked.length){m.className='msg bad';m.textContent='Please add at least one photo.';return}
+var list=[];SLOTS.forEach(function(o,i){if(files[o.k])list.push([('0'+(i+1)).slice(-2)+'-'+o.k+'.jpg',files[o.k]])});dmg.forEach(function(f,i){list.push(['1'+i+'-dmg'+(i?i+1:'')+'.jpg',f])});extra.forEach(function(f,i){list.push(['2'+i+'-x.jpg',f])});
+if(!list.length){m.className='msg bad';m.textContent='Please add at least one photo.';return}
 $('send').disabled=true;$('barwrap').style.display='block';
 try{
 var r=await post({action:'start',info:info}),n=0,bar=$('bar');
-for(var i=0;i<picked.length;i++){
-m.textContent='Sending photo '+(i+1)+' of '+picked.length+'... please keep this page open';
-var data=await shrink(picked[i]),ok=false;
-for(var t=0;t<3&&!ok;t++){try{await post({action:'photo',folderId:r.folderId,fileName:'photo-'+(i+1)+'.jpg',dataUrl:data});ok=true}catch(e){if(t==2)throw e}}
-n++;bar.style.width=Math.round(n/picked.length*100)+'%';
+for(var i=0;i<list.length;i++){
+m.textContent='Sending photo '+(i+1)+' of '+list.length+'... please keep this page open';
+var data=await shrink(list[i][1]),ok=false;
+for(var t=0;t<3&&!ok;t++){try{await post({action:'photo',folderId:r.folderId,fileName:list[i][0],dataUrl:data});ok=true}catch(e){if(t==2)throw e}}
+n++;bar.style.width=Math.round(n/list.length*100)+'%';
 }
 await post({action:'finish',rid:r.rid,folderId:r.folderId,info:info,count:n});
 $('app').innerHTML='<div class="card done"><h2>Thank you, '+info.name.replace(/[<>&]/g,'')+'!</h2><p>We got your '+n+' photo'+(n==1?'':'s')+'. We will be in touch shortly with your offer.</p></div>';
